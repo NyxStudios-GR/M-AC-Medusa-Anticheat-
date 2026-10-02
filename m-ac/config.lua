@@ -1,7 +1,8 @@
 Config = {}
 
 Config.Debug = false
-Config.StrictMode = true
+Config.StrictMode = false
+Config.ObserveOnly = true
 
 Config.RiskProfiles = {
     low = {
@@ -44,13 +45,7 @@ Config.TrustedResources = {
 Config.EventGuard = {
     tokenTTL = 180,
     requireRegistered = true,
-    protectedEvents = {
-        'tpz_core:server:addMoney',
-        'tpz_core:server:removeMoney',
-        'tpz_core:server:addItem',
-        'tpz_core:server:removeItem',
-        'tpz_core:server:setJob',
-    }
+    protectedEvents = {} -- Registered server callbacks define the allowlist.
 }
 
 Config.Punishments = {
@@ -58,19 +53,22 @@ Config.Punishments = {
     scoreKick = 70,
     scoreBan = 100,
     decayPerMinute = 4,
+    evidenceCooldown = 10,
+    banFile = 'm-ac.bans.json',
 }
 
 Config.Logging = {
     console = true,
     jsonFile = 'm-ac.log.jsonl',
-    webhook = '', -- optional Discord webhook
+    maxBytes = 1048576,
+    webhook = GetConvar('m_ac_webhook', ''), -- Server-only secret
 }
 
 Config.Detectors = {
-    movement = true,
-    combat = true,
+    movement = false, -- Enable only after tuning horses, wagons and teleports.
+    combat = false, -- Client damage probes are not authoritative.
     eventSpam = true,
     commandSpam = true,
     entityFlood = true,
-    impossibleEconomy = true,
+    impossibleEconomy = false, -- Legitimate payouts need transaction integration.
 }

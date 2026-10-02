@@ -1,38 +1,46 @@
 M_AC = M_AC or {}
 M_AC.Adapter = M_AC.Adapter or {}
 
-local TPZ = nil
+function M_AC.Adapter.GetPlayer(src)
+    if GetResourceState('tpz_core') ~= 'started' then
+        return nil
+    end
 
-CreateThread(function()
-    while TPZ == nil do
-        if exports and exports['tpz_core'] and exports['tpz_core'].getCoreObject then
-            TPZ = exports['tpz_core']:getCoreObject()
+    local ok, player = pcall(function()
+        local api = exports['tpz_core']:getCoreAPI()
+        local result = api.GetPlayer(src)
+        if not result or not result.loaded() then
+            return nil
         end
-        Wait(1000)
-    end
-end)
+        return result
+    end)
 
-function M_AC.Adapter.GetPlayer(source)
-    if not TPZ or not TPZ.GetPlayer then return nil end
-    return TPZ.GetPlayer(source)
+    if not ok then
+        return nil
+    end
+    return player
 end
 
-function M_AC.Adapter.GetMoney(source)
-    local player = M_AC.Adapter.GetPlayer(source)
-    if not player then return 0 end
-    if player.getMoney then
-        return tonumber(player.getMoney()) or 0
+function M_AC.Adapter.GetMoney(src)
+    local player = M_AC.Adapter.GetPlayer(src)
+    if not player then
+        return nil
     end
-    return 0
+    local ok, money = pcall(player.getAccount, 0)
+    if not ok or not M_AC.Utils.IsFinite(money) then
+        return nil
+    end
+    return money
 end
 
-function M_AC.Adapter.GetJob(source)
-    local player = M_AC.Adapter.GetPlayer(source)
-    if not player then return 'unknown' end
-    if player.getJob then
-        local job = player.getJob()
-        if type(job) == 'table' then return job.name or 'unknown' end
-        return tostring(job)
+function M_AC.Adapter.GetJob(src)
+    local player = M_AC.Adapter.GetPlayer(src)
+    if not player then
+        return nil
     end
-    return 'unknown'
+    local ok, job = pcall(player.getJob)
+    if not ok then
+        return nil
+    end
+    return job
 end

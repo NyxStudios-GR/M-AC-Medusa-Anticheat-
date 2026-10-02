@@ -2,19 +2,14 @@ M_AC = M_AC or {}
 M_AC.State = M_AC.State or {}
 M_AC.Log = M_AC.Log or {}
 
-local bypass = {}
 local logFileName = Config.Logging.jsonFile or 'm-ac.log.jsonl'
 
-function M_AC.State.IsBypassed(source)
-    return bypass[source] == true
-end
-
-local function canBypass(source)
+function M_AC.State.IsBypassed(src)
     local allow = {}
     for _, id in ipairs(Config.AdminIdentifiers or {}) do
         allow[id] = true
     end
-    return M_AC.Utils.HasAnyIdentifier(source, allow)
+    return M_AC.Utils.HasAnyIdentifier(src, allow)
 end
 
 function M_AC.Log.Emit(kind, source, reason, severity, context)
@@ -34,10 +29,26 @@ function M_AC.Log.Emit(kind, source, reason, severity, context)
         print(('[M-AC][%s] %s'):format(kind, line))
     end
 
-    SaveResourceFile(GetCurrentResourceName(), logFileName, line .. '\n', -1)
+    local existing = LoadResourceFile(GetCurrentResourceName(), logFileName) or ''
+    if #existing + #line > Config.Logging.maxBytes then
+        if not SaveResourceFile(GetCurrentResourceName(), logFileName .. '.1', existing, -1) then
+            print('[M-AC] log rotation failed')
+        end
+        existing = ''
+    end
+    if not SaveResourceFile(GetCurrentResourceName(), logFileName, existing .. line .. '\n', -1) then
+        print('[M-AC] log write failed')
+    end
 
     if Config.Logging.webhook and Config.Logging.webhook ~= '' then
-        PerformHttpRequest(Config.Logging.webhook, function() end, 'POST', line, {
+        local body = M_AC.Utils.JsonEncode({
+            content = line:sub(1, 1900),
+            allowed_mentions = {
+                parse = {},
+            },
+        })
+        PerformHttpRequest(Config.Logging.webhook, function()
+        end, 'POST', body, {
             ['Content-Type'] = 'application/json'
         })
     end
@@ -55,52 +66,72 @@ AddEventHandler('playerConnecting', function(_, _, deferrals)
         end
     end
 
-    bypass[src] = canBypass(src)
     deferrals.done()
 end)
 
-RegisterNetEvent('m-ac:server:heartbeat', function(pos, hits)
-    local src = source
+local ingress = {}
 
-    if type(pos) == 'table' and pos.x and pos.y and pos.z then
-        M_AC.Detection.CheckMovement(src, pos)
+local function admit(src, channel, limit)
+    if not GetPlayerName(src) then
+        return false
     end
-
-    if type(hits) == 'number' then
-        M_AC.Detection.CheckCombat(src, hits)
+    ingress[src] = ingress[src] or {}
+    local window = ingress[src][channel]
+    local now = os.time()
+    if not window or now - window.started >= 10 then
+        window = {
+            started = now,
+            count = 0,
+        }
+        ingress[src][channel] = window
     end
+    if window.count >= limit then
+        return false
+    end
+    window.count = window.count + 1
+    return true
+end
 
-    M_AC.Detection.CheckEconomy(src)
+RegisterNetEvent('m-ac:server:heartbeat', function()
+    -- Liveness only. Client coordinates and hit counts are attacker controlled.
+    admit(source, 'heartbeat', 5)
 end)
 
 RegisterNetEvent('m-ac:server:protected', function(eventName, sessionToken, payload)
     local src = source
-    M_AC.Detection.MarkEvent(src)
-
-    if not M_AC.EventGuard.Validate(src, eventName, sessionToken) then
+    if not admit(src, 'protected', 30) then
         return
     end
+    M_AC.Detection.MarkEvent(src)
+    M_AC.EventGuard.Dispatch(src, eventName, sessionToken, payload)
+end)
 
-    -- Place TPZ-sensitive actions here behind EventGuard.
-    -- Example payload validation stub:
-    if type(payload) ~= 'table' then
-        M_AC.Punishment.Evaluate(src, 'Malformed payload on protected event', 15, {
-            flag = M_AC.Flags.EVENT_SPOOF,
-            event = eventName,
-        })
+-- Command owners must call this from their own server command callback.
+exports('MarkCommand', function(src)
+    local resource = GetInvokingResource()
+    if resource and Config.TrustedResources[resource] and GetPlayerName(src) then
+        M_AC.Detection.MarkCommand(src)
     end
 end)
 
-AddEventHandler('rconCommand', function(commandName)
-    for _, playerId in ipairs(GetPlayers()) do
-        local src = tonumber(playerId)
-        if src then
-            M_AC.Detection.MarkCommand(src)
+CreateThread(function()
+    while true do
+        Wait(3000)
+        for _, id in ipairs(GetPlayers()) do
+            local src = tonumber(id)
+            if src and M_AC.Adapter.GetPlayer(src) then
+                M_AC.Detection.CheckEconomy(src)
+                if Config.Detectors.movement then
+                    local ped = GetPlayerPed(src)
+                    if ped and ped ~= 0 and DoesEntityExist(ped) then
+                        local pos = GetEntityCoords(ped)
+                        if M_AC.Utils.IsFinite(pos.x) and M_AC.Utils.IsFinite(pos.y) and M_AC.Utils.IsFinite(pos.z) then
+                            M_AC.Detection.CheckMovement(src, pos)
+                        end
+                    end
+                end
+            end
         end
-    end
-
-    if commandName and commandName:lower():find('exec') then
-        CancelEvent()
     end
 end)
 
@@ -120,5 +151,5 @@ AddEventHandler('onResourceStart', function(resourceName)
 end)
 
 AddEventHandler('playerDropped', function()
-    bypass[source] = nil
+    ingress[source] = nil
 end)

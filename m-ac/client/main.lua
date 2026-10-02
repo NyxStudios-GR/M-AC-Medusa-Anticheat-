@@ -10,13 +10,8 @@ CreateThread(function()
 
     while true do
         Wait(3000)
-        local ped = PlayerPedId()
-        local coords = GetEntityCoords(ped)
-        TriggerServerEvent('m-ac:server:heartbeat', {
-            x = coords.x,
-            y = coords.y,
-            z = coords.z,
-        }, M_AC.Client.HitsInWindow())
+        TriggerServerEvent('m-ac:server:requestToken')
+        TriggerServerEvent('m-ac:server:heartbeat')
     end
 end)
 

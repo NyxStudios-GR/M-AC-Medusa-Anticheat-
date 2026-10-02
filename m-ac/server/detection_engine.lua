@@ -42,8 +42,10 @@ end
 function M_AC.Detection.MarkEvent(source)
     local state = getState(source)
     local profile = getProfile(source)
-    state.events[#state.events + 1] = os.time()
     state.events = pruneWindow(state.events, profile.eventWindowSeconds)
+    if #state.events < profile.maxEventPerWindow + 1 then
+        state.events[#state.events + 1] = os.time()
+    end
 
     if Config.Detectors.eventSpam and #state.events > profile.maxEventPerWindow then
         M_AC.Punishment.Evaluate(source, 'Event flood detected', 15, {
@@ -56,8 +58,10 @@ end
 function M_AC.Detection.MarkCommand(source)
     local state = getState(source)
     local profile = getProfile(source)
-    state.commands[#state.commands + 1] = os.time()
     state.commands = pruneWindow(state.commands, profile.eventWindowSeconds)
+    if #state.commands < profile.maxCommandsPerWindow + 1 then
+        state.commands[#state.commands + 1] = os.time()
+    end
 
     if Config.Detectors.commandSpam and #state.commands > profile.maxCommandsPerWindow then
         M_AC.Punishment.Evaluate(source, 'Command flood detected', 15, {
@@ -70,8 +74,10 @@ end
 function M_AC.Detection.MarkEntitySpawn(source)
     local state = getState(source)
     local profile = getProfile(source)
-    state.entities[#state.entities + 1] = os.time()
     state.entities = pruneWindow(state.entities, profile.eventWindowSeconds)
+    if #state.entities < profile.maxEntitySpawnPerWindow + 1 then
+        state.entities[#state.entities + 1] = os.time()
+    end
 
     if Config.Detectors.entityFlood and #state.entities > profile.maxEntitySpawnPerWindow then
         M_AC.Punishment.Evaluate(source, 'Entity spawn flood detected', 20, {
@@ -82,7 +88,9 @@ function M_AC.Detection.MarkEntitySpawn(source)
 end
 
 function M_AC.Detection.CheckMovement(source, pos)
-    if not Config.Detectors.movement then return end
+    if not Config.Detectors.movement then
+        return
+    end
     local state = getState(source)
     local profile = getProfile(source)
     local nowMs = GetGameTimer()
@@ -116,9 +124,16 @@ function M_AC.Detection.CheckMovement(source, pos)
 end
 
 function M_AC.Detection.CheckEconomy(source)
-    if not Config.Detectors.impossibleEconomy then return end
+    if not Config.Detectors.impossibleEconomy then
+        return
+    end
     local state = getState(source)
     local money = M_AC.Adapter.GetMoney(source)
+
+    if money == nil then
+        state.lastMoney = nil
+        return
+    end
 
     if state.lastMoney ~= nil then
         local delta = money - state.lastMoney
@@ -135,7 +150,9 @@ function M_AC.Detection.CheckEconomy(source)
 end
 
 function M_AC.Detection.CheckCombat(source, hitsInLastWindow)
-    if not Config.Detectors.combat then return end
+    if not Config.Detectors.combat then
+        return
+    end
     if hitsInLastWindow > 20 then
         M_AC.Punishment.Evaluate(source, 'Combat anomaly', 20, {
             flag = M_AC.Flags.COMBAT_ANOMALY,

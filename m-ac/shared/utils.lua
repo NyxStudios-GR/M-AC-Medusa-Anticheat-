@@ -6,8 +6,12 @@ function M_AC.Utils.Now()
 end
 
 function M_AC.Utils.Clamp(v, minV, maxV)
-    if v < minV then return minV end
-    if v > maxV then return maxV end
+    if v < minV then
+        return minV
+    end
+    if v > maxV then
+        return maxV
+    end
     return v
 end
 
@@ -28,7 +32,9 @@ end
 
 function M_AC.Utils.Contains(list, value)
     for _, v in ipairs(list or {}) do
-        if v == value then return true end
+        if v == value then
+            return true
+        end
     end
     return false
 end
@@ -49,4 +55,8 @@ function M_AC.Utils.HasAnyIdentifier(source, allowList)
         end
     end
     return false
+end
+
+function M_AC.Utils.IsFinite(value)
+    return type(value) == 'number' and value == value and value > -math.huge and value < math.huge
 end

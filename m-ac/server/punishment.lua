@@ -3,9 +3,15 @@ M_AC.Punishment = M_AC.Punishment or {}
 
 local playerRiskScore = {}
 local playerBans = {}
-
-local function getName(src)
-    return GetPlayerName(src) or ('src:' .. tostring(src))
+local evidence = {}
+local banFile = Config.Punishments.banFile
+local saved = LoadResourceFile(GetCurrentResourceName(), banFile)
+if saved then
+    local ok, decoded = pcall(json.decode, saved)
+    if not ok or type(decoded) ~= 'table' then
+        error('[M-AC] Invalid ban file; restore it before starting')
+    end
+    playerBans = decoded
 end
 
 function M_AC.Punishment.GetScore(source)
@@ -30,14 +36,30 @@ function M_AC.Punishment.IsBanned(identifier)
 end
 
 function M_AC.Punishment.Ban(source, reason, context)
-    local identifiers = M_AC.Utils.GetIdentifiers(source)
-    for _, id in ipairs(identifiers) do
-        playerBans[id] = {
-            reason = reason,
-            context = context,
-            ts = os.time(),
-        }
+    local nextBans = {}
+    for id, record in pairs(playerBans) do
+        nextBans[id] = record
     end
+    local identifiers = M_AC.Utils.GetIdentifiers(source)
+    local count = 0
+    for _, id in ipairs(identifiers) do
+        if id:match('^license:') or id:match('^license2:') or id:match('^steam:') then
+            nextBans[id] = {
+                reason = reason,
+                ts = os.time(),
+            }
+            count = count + 1
+        end
+    end
+    if count == 0 then
+        print('[M-AC] ban refused: no stable identifier')
+        return
+    end
+    if not SaveResourceFile(GetCurrentResourceName(), banFile, json.encode(nextBans), -1) then
+        print('[M-AC] ban persistence failed; player was not banned')
+        return
+    end
+    playerBans = nextBans
 
     DropPlayer(source, ('[M-AC] Banned: %s'):format(reason))
 end
@@ -57,7 +79,21 @@ function M_AC.Punishment.Evaluate(source, reason, scoreGain, context)
         return
     end
 
+    if not GetPlayerName(source) then
+        return
+    end
+    evidence[source] = evidence[source] or {}
+    local key = context and context.flag or reason
+    local now = os.time()
+    if evidence[source][key] and now - evidence[source][key] < Config.Punishments.evidenceCooldown then
+        return
+    end
+    evidence[source][key] = now
     local score = M_AC.Punishment.AddScore(source, scoreGain)
+    if Config.ObserveOnly then
+        M_AC.Log.Emit('observation', source, reason, M_AC.Severity.INFO, context)
+        return
+    end
 
     if score >= Config.Punishments.scoreBan then
         M_AC.Log.Emit('punishment', source, reason, M_AC.Severity.CRITICAL, context)
@@ -80,6 +116,7 @@ end
 AddEventHandler('playerDropped', function()
     local src = source
     playerRiskScore[src] = nil
+    evidence[src] = nil
 end)
 
 CreateThread(function()
