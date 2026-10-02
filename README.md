@@ -4,7 +4,6 @@ This is a **staging baseline**, not complete exploit protection. Start in observ
 
 ## Repository audit
 
-At review, `main` was commit `e94943b` with only `.gitkeep`. Closed PR #1 was **not merged**. Its head `a40c5aa` and the `M-AC` branch contained the same scaffold. This change includes that scaffold and hardens it for staging.
 
 Critical corrections:
 
